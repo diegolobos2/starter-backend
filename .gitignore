@@ -6,3 +6,5 @@ tests/test_data.db
 db_data/
 .pytest_cache/
 venv/
+./docs/github_setup.md
+./docs/teoria/frontera_core_application.md
