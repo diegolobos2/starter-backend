@@ -10,7 +10,8 @@ documentos propietarios.
    - `docs/contrato/alcance.md`;
    - `docs/contrato/arquitectura.md`;
    - `docs/contrato/reglas.md`;
-   - `docs/contrato/trazabilidad.md`.
+   - `docs/contrato/trazabilidad.md`;
+   - `docs/contrato/base_de_datos.md`.
 2. Presentar un plan breve con:
    - archivos a crear o modificar;
    - propósito de cada cambio;
