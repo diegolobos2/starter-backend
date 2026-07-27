@@ -36,7 +36,6 @@ de la Semana 2.
 - Decisiones: `docs/adr/`
 - Diagramas: `docs/diagramas/`
 - Material teórico: `docs/teoria/`
-- Material docente: `material_docente/`
 - Estado y pendientes: `TODO.md`
 
 ## Trabajo con agentes
