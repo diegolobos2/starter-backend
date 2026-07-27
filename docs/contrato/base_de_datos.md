@@ -1,80 +1,36 @@
-# Base de datos: cómo se crea, se configura y cómo va a evolucionar
+# Base de datos vigente — Semana 2
 
-Este documento explica la metodología de base de datos del proyecto: qué
-hace hoy, por qué, y qué cambia en las próximas semanas. Es importante
-para no confundir el estado actual (deliberadamente simple) con el
-estado final.
+Este documento describe el estado vigente de la persistencia. Las decisiones
+históricas se registran en `docs/adr/` y la evolución pendiente en `TODO.md`.
 
-## Cómo se conecta la aplicación a la base
+## Configuración
 
-La configuración vive en `app/infrastructure/db.py`. Usa una única
-variable de entorno, `DATABASE_URL`:
+La aplicación obtiene la conexión mediante la variable de entorno
+`DATABASE_URL`.
 
-- En `docker-compose.yml` apunta a **PostgreSQL** (el motor real del
-  proyecto): `postgresql+psycopg://app:app@db:5432/app`.
-- En los tests, `tests/conftest.py` sobreescribe `DATABASE_URL` por una
-  base **SQLite** en archivo, *antes* de importar la app. Es una
-  decisión pragmática: la suite normal no depende de tener Postgres
-  levantado. La garantía de concurrencia real (Semana 3) sí se validará
-  contra Postgres, en una suite de integración aparte.
+- En `docker-compose.yml`, el motor utilizado es PostgreSQL.
+- En la suite normal de pruebas, `tests/conftest.py` establece una base SQLite
+  antes de importar la aplicación.
 
-Esta separación (Postgres para correr de verdad, SQLite para tests
-rápidos) es intencional y es un buen ejemplo de por qué `DATABASE_URL`
-está externalizada como variable de entorno y no hardcodeada.
+## Creación del esquema
 
-## Cómo se crea el esquema HOY (y su limitación)
+Durante la Semana 2, las tablas se crean mediante:
 
-Actualmente el esquema se crea con `Base.metadata.create_all(bind=engine)`
-en el arranque de la app (`main.py`). SQLAlchemy mira los modelos
-declarados en `app/infrastructure/models.py` (`EventModel`, `SeatModel`,
-`HoldModel`) y crea las tablas que falten.
+`Base.metadata.create_all(bind=engine)`
 
-**Limitación importante:** `create_all` solo *crea tablas que no
-existen*. No aplica cambios a tablas ya creadas. Si mañana agregás una
-columna o una restricción a un modelo, `create_all` **no** la va a
-aplicar sobre una base que ya tenía la tabla vieja. Para eso hacen falta
-**migraciones**.
+El proyecto no tiene todavía un sistema de migraciones configurado.
 
-## Nota sobre Alembic (inconsistencia doc-vs-realidad, a propósito)
+## Ubicación de modelos y acceso
 
-Documentos anteriores mencionan Alembic (la herramienta estándar de
-migraciones para SQLAlchemy) como parte de la infraestructura. **Alembic
-todavía NO está configurado** en el proyecto: no hay `alembic.ini` ni
-carpeta de migraciones. El esquema se maneja hoy solo con `create_all`.
+- Los modelos ORM viven en `app/infrastructure/models.py`.
+- El acceso a persistencia se realiza mediante adaptadores de Infrastructure,
+  de acuerdo con ARQ-004.
+- Core y Application no importan modelos ORM ni ejecutan consultas SQL.
+- La traducción entre modelos ORM y entidades corresponde al adaptador.
 
-Esto es en sí mismo un buen ejemplo de auditoría: un documento decía algo
-que el código no cumple. Se deja la aclaración acá en vez de borrar la
-mención, para que la brecha quede visible y explicada.
+## Limitaciones vigentes
 
-## Por qué esto importa para la Semana 3
-
-La Semana 3 agrega la garantía real de RET-001 a nivel de PostgreSQL:
-una **restricción única parcial** (un índice único sobre `(event_id,
-seat_id)` que aplique solo cuando el estado es `ACTIVE`/`CONFIRMED`) y/o
-una transacción con bloqueo.
-
-Agregar esa restricción es exactamente el caso donde `create_all` se
-queda corto: si la tabla `holds` ya existe, `create_all` no le va a
-sumar el índice. Por eso la Semana 3 es el momento natural para
-introducir **Alembic** de verdad:
-
-1. Configurar Alembic (`alembic init`).
-2. Generar una migración que agregue la restricción única parcial.
-3. Aplicarla con `alembic upgrade head`.
-
-Así, la evolución del esquema deja de ser "lo que create_all alcance a
-crear" y pasa a ser un historial versionado de cambios, coherente con el
-resto del proyecto (donde todo queda trazado y auditado).
-
-## Metodología recomendada, resumida
-
-- **Modelos** (`models.py`): definen la forma de las tablas. Son detalle
-  de infraestructura; core y application no los importan.
-- **Entidades** (`core/entities.py`): son del dominio, inmutables, sin
-  saber nada de tablas. El adaptador traduce entre ambos.
-- **Semana 1-2:** esquema por `create_all`, suficiente para el alcance
-  actual.
-- **Semana 3 en adelante:** migraciones con Alembic para cualquier
-  cambio de esquema (empezando por la restricción única de RET-001).
-- **Nunca** poner SQL crudo en `api` ni en `application`: todo acceso a
-  la base pasa por el adaptador en `infrastructure`.
+- `create_all` crea tablas faltantes, pero no actualiza tablas existentes.
+- La garantía concurrente de RET-001 no está implementada.
+- La evolución del esquema y la incorporación de migraciones pertenecen al
+  alcance de la Semana 3 y se registran en `TODO.md`.
