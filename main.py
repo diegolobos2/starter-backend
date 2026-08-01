@@ -1,8 +1,8 @@
 """
 Punto de entrada de la aplicación.
 
-Ensambla la app de FastAPI, monta las rutas y crea las tablas si
-no existen (create_all). Ver nota sobre Alembic en README.md.
+Ensambla la app de FastAPI, monta las rutas y no crea tablas automáticamente.
+Ver nota sobre Alembic en README.md.
 """
 
 from fastapi import FastAPI
@@ -17,10 +17,8 @@ app.include_router(router)
 
 @app.on_event("startup")
 def on_startup() -> None:
-    # Semana 1: create_all en lugar de migraciones Alembic completas,
-    # para mantener el arranque simple. Alembic queda preparado en
-    # el proyecto para incorporarse formalmente sin romper nada.
-    Base.metadata.create_all(bind=engine)
+    # En Semana 3 la aplicación asume que el esquema se gestiona con Alembic.
+    # No se ejecuta ninguna creación automática de tablas al iniciar.
 
     session = SessionLocal()
     try:

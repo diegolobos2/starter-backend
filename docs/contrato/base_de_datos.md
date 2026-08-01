@@ -1,36 +1,155 @@
-# Base de datos vigente — Semana 2
+# Base de datos: conexión, SQLAlchemy y evolución del esquema
 
-Este documento describe el estado vigente de la persistencia. Las decisiones
-históricas se registran en `docs/adr/` y la evolución pendiente en `TODO.md`.
+Este documento explica cómo se conecta la aplicación, qué papel cumple
+SQLAlchemy y cómo se modifica el esquema de la base a partir de la Semana 3.
 
-## Configuración
+## 1. Cómo se conecta la aplicación
 
-La aplicación obtiene la conexión mediante la variable de entorno
-`DATABASE_URL`.
+La configuración vive en `app/infrastructure/db.py` y depende de la variable de
+entorno `DATABASE_URL`.
 
-- En `docker-compose.yml`, el motor utilizado es PostgreSQL.
-- En la suite normal de pruebas, `tests/conftest.py` establece una base SQLite
+- En `docker-compose.yml` apunta a PostgreSQL, el motor real del proyecto:
+  `postgresql+psycopg://app:app@db:5432/app`.
+- En los tests, `tests/conftest.py` la reemplaza por una base SQLite en archivo
   antes de importar la aplicación.
 
-## Creación del esquema
+La misma aplicación puede trabajar con ambas configuraciones porque la URL no
+está escrita dentro del código de negocio.
 
-Durante la Semana 2, las tablas se crean mediante:
+## 2. Qué hace SQLAlchemy
 
-`Base.metadata.create_all(bind=engine)`
+SQLAlchemy conecta objetos Python con operaciones de base de datos. No reemplaza
+la base ni elimina la necesidad de entender transacciones, índices o
+restricciones.
 
-El proyecto no tiene todavía un sistema de migraciones configurado.
+```text
+Entidad del dominio
+        ↓ traducción del adaptador
+Modelo SQLAlchemy
+        ↓
+Session
+        ↓
+Engine y driver
+        ↓
+Base de datos
+```
 
-## Ubicación de modelos y acceso
+### Modelos
 
-- Los modelos ORM viven en `app/infrastructure/models.py`.
-- El acceso a persistencia se realiza mediante adaptadores de Infrastructure,
-  de acuerdo con ARQ-004.
-- Core y Application no importan modelos ORM ni ejecutan consultas SQL.
-- La traducción entre modelos ORM y entidades corresponde al adaptador.
+Los modelos de `app/infrastructure/models.py` describen tablas, columnas,
+relaciones, índices y restricciones.
 
-## Limitaciones vigentes
+No son las entidades del dominio:
 
-- `create_all` crea tablas faltantes, pero no actualiza tablas existentes.
-- La garantía concurrente de RET-001 no está implementada.
-- La evolución del esquema y la incorporación de migraciones pertenecen al
-  alcance de la Semana 3 y se registran en `TODO.md`.
+- `EventModel`, `SeatModel` y `HoldModel` pertenecen a Infrastructure;
+- `Event`, `Seat` y `Hold` pertenecen al core.
+
+El adaptador traduce entre ambos mundos.
+
+### Engine
+
+El `engine` sabe cómo obtener conexiones usando `DATABASE_URL`.
+
+### Session
+
+La `Session` representa una unidad de trabajo. Permite consultar, agregar y
+modificar objetos dentro de una transacción.
+
+- `flush` envía operaciones pendientes a la base sin confirmar todavía la
+  transacción;
+- `commit` confirma los cambios;
+- `rollback` descarta la transacción después de un error.
+
+Una restricción puede fallar durante `flush` o `commit`. Después de un
+`IntegrityError`, la sesión necesita `rollback` antes de volver a utilizarse.
+
+## 3. Verificación rápida y motor real
+
+SQLite soporta índices únicos parciales. Por eso la conducta central de
+`RET-001` puede probarse en la suite rápida sin levantar Docker.
+
+La prueba contra PostgreSQL sigue siendo útil para confirmar que la migración,
+el dialecto y el tratamiento del error funcionan también en el motor real.
+
+```text
+SQLite en tests       → verifica rápidamente el comportamiento esperado
+PostgreSQL integración → confirma la implementación sobre el motor real
+```
+
+## 4. Cómo evoluciona el esquema
+
+A partir de la Semana 3, el esquema se gestiona con **migraciones Alembic**.
+`Base.metadata.create_all` deja de ser el mecanismo normal de arranque.
+
+### Por qué `create_all` deja de alcanzar
+
+`create_all` crea tablas que todavía no existen. No transforma de manera
+controlada las tablas ya creadas.
+
+Si se agrega una columna, un índice o una restricción al modelo Python, una base
+existente no recibe automáticamente ese cambio. La tabla `holds` ya existe en
+instalaciones anteriores, por lo que la nueva restricción de `RET-001` necesita
+una migración.
+
+### Qué es una migración
+
+Una migración describe cómo pasar de una versión del esquema a otra.
+
+- `upgrade`: aplica el cambio;
+- `downgrade`: lo revierte cuando es posible.
+
+Alembic registra en la propia base qué revisión está aplicada. Las migraciones
+se versionan con Git y se ejecutan con:
+
+```bash
+alembic upgrade head
+```
+
+### Condición operativa
+
+Una base vacía debe poder construirse íntegramente con:
+
+```bash
+alembic upgrade head
+```
+
+Si además hace falta que la aplicación cree tablas al arrancar, el historial de
+migraciones está incompleto.
+
+### Qué no se delega al agente
+
+El agente puede generar la sintaxis de una migración. La persona responsable del
+proyecto debe poder explicar:
+
+- qué cambia;
+- por qué cambia;
+- cómo se comprueba;
+- qué riesgo existe si la base ya contiene datos;
+- qué ocurre al revertirla.
+
+Una migración que agrega unicidad puede fallar si ya existen filas duplicadas.
+Eso no debe ocultarse: obliga a decidir qué hacer con esos datos antes de aplicar
+la nueva regla.
+
+## 5. Protección elegida para RET-001
+
+`RET-001` se define en `reglas.md`. Para protegerla frente a solicitudes
+simultáneas, el esquema incorpora una restricción de unicidad sobre evento y
+butaca, limitada a los estados internos que `RET-002` considera ocupantes.
+
+Conceptualmente:
+
+```sql
+CREATE UNIQUE INDEX uq_butaca_ocupada
+ON holds (event_id, seat_id)
+WHERE status IN ('active', 'confirmed');
+```
+
+`ACTIVE` es el nombre interno del estado que la API expone como `HELD`.
+
+La validación previa del core se mantiene para detectar el caso normal. La
+restricción del esquema cubre la situación en la que dos solicitudes leen la
+butaca libre antes de que una de ellas confirme la escritura.
+
+La comparación con bloqueos y aislamiento `SERIALIZABLE` se registra en
+`docs/adr/ADR-003.md`.

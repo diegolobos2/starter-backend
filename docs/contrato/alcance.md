@@ -36,7 +36,6 @@ puertos y adaptadores, reglas de negocio y verificación automática.
 - WebSockets;
 - microservicios;
 - liberación automática de retenciones;
-- garantía definitiva de RET-001 bajo concurrencia;
 - integración con frontend.
 
 La evolución temporal y las tareas pendientes se registran únicamente en

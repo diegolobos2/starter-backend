@@ -9,7 +9,7 @@ importar este módulo directamente.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String, Index, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.db import Base
@@ -52,3 +52,11 @@ class HoldModel(Base):
     # condicional (o se resuelve por transacción/bloqueo) para
     # garantizar RET-001 bajo concurrencia. Deliberadamente ausente
     # en la Semana 1. Ver ADR-001 y docs/contrato/alcance.md.
+    Index(
+        "uq_holds_event_seat_active",
+        event_id,
+        seat_id,
+        unique=True,
+        sqlite_where=text("status IN ('active','confirmed')"),
+        postgresql_where=text("status IN ('active','confirmed')"),
+    )

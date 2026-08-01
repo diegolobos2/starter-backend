@@ -14,7 +14,6 @@ puerto HoldRepository, no esta elección concreta.
 import os
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 
 from app.api.schemas import CreateHoldIn, EventOut, HoldOut, SeatOut
 from app.application import use_cases
@@ -30,7 +29,7 @@ router = APIRouter()
 DEMORA_DIDACTICA_SEG = float(os.getenv("DEMORA_DIDACTICA_SEG", "0"))
 
 
-def get_repo(session: Session = Depends(get_session)) -> HoldRepository:
+def get_repo(session = Depends(get_session)) -> HoldRepository:
     """
     Construye el adaptador concreto de persistencia y lo entrega como
     puerto. Este es el único lugar donde la API decide qué
@@ -83,7 +82,13 @@ def crear_retencion(
     except use_cases.ButacaNoEncontradaError:
         raise HTTPException(status_code=404, detail="Butaca no encontrada")
     except RetencionDuplicadaError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "SEAT_UNAVAILABLE",
+                "message": str(exc),
+            },
+        )
 
 
 @router.post("/holds/{hold_id}/confirm", response_model=HoldOut)
@@ -92,3 +97,14 @@ def confirmar_retencion(hold_id: str, repo: HoldRepository = Depends(get_repo)):
         return use_cases.confirmar_retencion(repo, hold_id)
     except use_cases.RetencionNoEncontradaError:
         raise HTTPException(status_code=404, detail="Retención no encontrada")
+
+
+@router.delete("/holds/{hold_id}", status_code=501)
+def liberar_retencion(hold_id: str):
+    raise HTTPException(
+        status_code=501,
+        detail={
+            "code": "NOT_IMPLEMENTED",
+            "message": "DELETE /holds/{hold_id} no está implementado en la Semana 3.",
+        },
+    )

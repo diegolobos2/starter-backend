@@ -17,9 +17,11 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.entities import Event, Hold, HoldStatus, Seat
 from app.infrastructure.models import EventModel, HoldModel, SeatModel
+from app.core.rules import RetencionDuplicadaError
 
 
 def _event_from_model(m: EventModel) -> Event:
@@ -104,7 +106,14 @@ class SqlAlchemyHoldRepository:
             created_at=datetime.utcnow(),
         )
         self._session.add(modelo)
-        self._session.commit()
+        try:
+            self._session.commit()
+        except IntegrityError as exc:
+            # Traduce el error técnico de la base a una excepción de dominio
+            self._session.rollback()
+            raise RetencionDuplicadaError(
+                "La butaca ya está ocupada para este evento (RET-001)."
+            ) from exc
         self._session.refresh(modelo)
         return _hold_from_model(modelo)
 
@@ -117,7 +126,13 @@ class SqlAlchemyHoldRepository:
         if m is None:
             return None
         m.status = HoldStatus.CONFIRMED.value
-        self._session.commit()
+        try:
+            self._session.commit()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise RetencionDuplicadaError(
+                "La butaca ya está ocupada para este evento (RET-001)."
+            ) from exc
         self._session.refresh(m)
         return _hold_from_model(m)
 
