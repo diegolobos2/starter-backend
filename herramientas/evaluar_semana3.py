@@ -339,6 +339,102 @@ def verificar_alembic():
 
 
 # ---------------------------------------------------------------------------
+# CA-006b — la migración se aplica de verdad sobre una base vacía
+# ---------------------------------------------------------------------------
+#
+# CA-006 solo comprueba que exista configuración y archivos de migración.
+# El propio documento de criterios advierte que esa señal "por sí sola no
+# demuestra que la migración funcione". Esta verificación cubre esa diferencia:
+# ejecuta `alembic upgrade head` sobre una base vacía y compara el esquema
+# resultante con el que declaran los modelos.
+
+CODIGO_ESQUEMA_REAL = r"""
+import json
+from sqlalchemy import create_engine, inspect
+from app.infrastructure.db import Base, DATABASE_URL
+import app.infrastructure.models  # noqa: F401  (registra las tablas en Base)
+
+inspector = inspect(create_engine(DATABASE_URL))
+tablas = set(inspector.get_table_names()) - {"alembic_version"}
+indices = set()
+for t in tablas:
+    for i in inspector.get_indexes(t):
+        if i.get("name"):
+            indices.add(i["name"])
+
+esperadas = set(Base.metadata.tables)
+indices_esperados = {
+    idx.name
+    for tabla in Base.metadata.tables.values()
+    for idx in tabla.indexes
+    if idx.name
+}
+print(json.dumps({
+    "tablas": sorted(tablas),
+    "tablas_esperadas": sorted(esperadas),
+    "indices": sorted(indices),
+    "indices_esperados": sorted(indices_esperados),
+}))
+"""
+
+
+def verificar_alembic_ejecuta():
+    import json
+
+    titulo = "La migración construye la base vacía"
+    ruta = Path(tempfile.gettempdir()) / "evaluacion_alembic_semana3.db"
+    if ruta.exists():
+        ruta.unlink()
+    entorno = {"DATABASE_URL": f"sqlite:///{ruta}"}
+
+    r = correr([sys.executable, "-m", "alembic", "upgrade", "head"], env_extra=entorno)
+    if r.returncode != 0:
+        ultima = (r.stderr.strip().splitlines() or ["sin detalle"])[-1]
+        registrar("CA-006b", "Garantías", titulo, FALLA,
+                  "`alembic upgrade head` falló: " + ultima[:140])
+        return
+
+    if not ruta.exists():
+        registrar("CA-006b", "Garantías", titulo, FALLA,
+                  "alembic terminó sin error pero no creó ninguna base")
+        return
+
+    r2 = correr([sys.executable, "-c", CODIGO_ESQUEMA_REAL], env_extra=entorno)
+    if r2.returncode != 0:
+        ultima = (r2.stderr.strip().splitlines() or ["sin detalle"])[-1]
+        registrar("CA-006b", "Garantías", titulo, FALLA,
+                  "no se pudo inspeccionar el esquema: " + ultima[:140])
+        return
+
+    try:
+        datos = json.loads(r2.stdout.strip().splitlines()[-1])
+    except Exception:
+        registrar("CA-006b", "Garantías", titulo, FALLA, "respuesta ilegible")
+        return
+
+    faltan_tablas = sorted(set(datos["tablas_esperadas"]) - set(datos["tablas"]))
+    faltan_indices = sorted(set(datos["indices_esperados"]) - set(datos["indices"]))
+
+    if faltan_tablas or faltan_indices:
+        partes = []
+        if faltan_tablas:
+            partes.append("tablas ausentes: " + ", ".join(faltan_tablas))
+        if faltan_indices:
+            partes.append("índices ausentes: " + ", ".join(faltan_indices))
+        registrar("CA-006b", "Garantías", titulo, FALLA, "; ".join(partes))
+        return
+
+    registrar(
+        "CA-006b",
+        "Garantías",
+        titulo,
+        OK,
+        f"{len(datos['tablas'])} tabla(s) y {len(datos['indices'])} índice(s) "
+        "coinciden con los modelos",
+    )
+
+
+# ---------------------------------------------------------------------------
 # NIVEL 4 — contrato con el consumidor
 # ---------------------------------------------------------------------------
 
@@ -560,6 +656,7 @@ def main() -> int:
     verificar_restriccion_en_esquema()
     verificar_create_all()
     verificar_alembic()
+    verificar_alembic_ejecuta()
     verificar_contrato_openapi()
     verificar_alcance(args.base)
 

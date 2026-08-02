@@ -47,11 +47,10 @@ class HoldModel(Base):
         DateTime, nullable=False, default=datetime.utcnow
     )
 
-    # NOTA (Semana 1 -> Semana 3):
-    # Acá es donde eventualmente se agrega una restricción única
-    # condicional (o se resuelve por transacción/bloqueo) para
-    # garantizar RET-001 bajo concurrencia. Deliberadamente ausente
-    # en la Semana 1. Ver ADR-001 y docs/contrato/alcance.md.
+    # Garantía de RET-001 (Semana 3): índice único parcial. Solo los estados
+    # que mantienen la butaca ocupada participan de la unicidad, de modo que
+    # una butaca liberada o vencida vuelve a poder retenerse.
+    # Ver ADR-003 y docs/contrato/base_de_datos.md.
     Index(
         "uq_holds_event_seat_active",
         event_id,

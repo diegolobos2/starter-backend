@@ -106,11 +106,21 @@ misma butaca para el mismo evento, según `RET-002`.
 `alembic upgrade head` construye el esquema sin depender de
 `Base.metadata.create_all`.
 
-- **Comprobación principal:** aplicar las migraciones sobre una base vacía y
-  arrancar la aplicación.
 - **Comprobación del tablero:** presencia de configuración y archivos de
   migración. Esta señal es útil, pero por sí sola no demuestra que la migración
-  funcione.
+  funcione: por eso existe `CA-006b`.
+
+### `CA-006b` — La migración construye de verdad una base vacía
+
+`alembic upgrade head` sobre una base vacía termina sin error y produce las
+tablas e índices que declaran los modelos.
+
+- **Comprobación actual:** el tablero ejecuta la migración contra una base
+  temporal y compara el esquema resultante con `Base.metadata`.
+- **Por qué existe este criterio:** `CA-006` cuenta archivos. Un proyecto puede
+  tener `alembic.ini`, una carpeta `versions/` y una migración escrita, y aun
+  así no aplicar ninguna migración. La diferencia entre "hay migraciones" y
+  "las migraciones corren" no la cubre ninguna otra casilla.
 
 ### `CA-007` — `create_all` sale del arranque
 

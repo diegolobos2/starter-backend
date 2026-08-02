@@ -46,12 +46,10 @@ def run_migrations_online() -> None:
             context.run_migrations()
 
 
-def main() -> None:
-    if context.is_offline_mode():
-        run_migrations_offline()
-    else:
-        run_migrations_online()
-
-
-if __name__ == "__main__":
-    main()
+# Alembic carga este archivo como módulo (no como script): la invocación tiene
+# que ocurrir a nivel de módulo. Envolverla en `if __name__ == "__main__"` hace
+# que el comando termine sin error y sin efecto.
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()

@@ -1,7 +1,7 @@
 """add unique partial index on holds
 
 Revision ID: 0001_add_holds_unique
-Revises: 
+Revises: 0000_create_schema
 Create Date: 2026-08-01 00:00:00.000000
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '0001_add_holds_unique'
-down_revision = None
+down_revision = '0000_create_schema'
 branch_labels = None
 depends_on = None
 
